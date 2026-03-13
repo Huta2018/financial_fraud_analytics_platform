@@ -4,8 +4,10 @@ import pandas as pd
 import sys
 from pathlib import Path
 import plotly.express as px
+import plotly.graph_objects as go
 
 from sklearn.base import BaseEstimator, TransformerMixin
+
 
 # -------------------------------------------------
 # Fix path so Streamlit can find src modules
@@ -68,11 +70,17 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("Credit Union Fraud Detection Platform")
+st.title("🏦 Credit Union Fraud Detection Platform")
+
+st.markdown(
+"""
+AI-powered monitoring system for detecting **communication fraud and suspicious financial transactions**.
+"""
+)
 
 tab1, tab2 = st.tabs([
-    "Communication Fraud Detection",
-    "Transaction Fraud Detection"
+    "📩 Communication Fraud Detection",
+    "💳 Transaction Fraud Detection"
 ])
 
 
@@ -112,13 +120,85 @@ with tab1:
                 unsafe_allow_html=True
             )
 
+        # -------------------------------------------------
+        # Fraud Risk Gauge
+        # -------------------------------------------------
+
+        fig = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=score,
+            title={'text': "Fraud Risk Score"},
+            gauge={
+                'axis': {'range': [0, 100]},
+                'bar': {'color': color},
+                'steps': [
+                    {'range': [0, 30], 'color': "lightgreen"},
+                    {'range': [30, 70], 'color': "orange"},
+                    {'range': [70, 100], 'color': "red"}
+                ]
+            }
+        ))
+
+        st.plotly_chart(fig, use_container_width=True)
+
+        # -------------------------------------------------
+        # Highlight Suspicious Words
+        # -------------------------------------------------
+
+        st.subheader("Suspicious Language Highlight")
+
+        suspicious_words = [
+            "urgent",
+            "immediately",
+            "transfer",
+            "wire",
+            "ceo",
+            "confidential",
+            "asap"
+        ]
+
+        highlighted_message = message
+
+        for word in suspicious_words:
+            highlighted_message = highlighted_message.replace(
+                word,
+                f"**:red[{word}]**"
+            )
+
+        st.markdown(highlighted_message)
+
+        # -------------------------------------------------
+        # Fraud Signals
+        # -------------------------------------------------
+
         features = extract_manual_features(message)
 
         st.subheader("Detected Fraud Signals")
 
-        for key, val in features.items():
-            if val > 0:
-                st.write("-", key.replace("_", " "))
+        signal_df = pd.DataFrame(
+            list(features.items()),
+            columns=["Signal", "Detected"]
+        )
+
+        signal_df["Detected"] = signal_df["Detected"].astype(int)
+
+        detected_signals = signal_df[signal_df["Detected"] > 0]
+
+        if len(detected_signals) > 0:
+
+            st.dataframe(detected_signals)
+
+            fig_signals = px.bar(
+                detected_signals,
+                x="Signal",
+                y="Detected",
+                title="Fraud Signal Activation"
+            )
+
+            st.plotly_chart(fig_signals, use_container_width=True)
+
+        else:
+            st.success("No suspicious signals detected")
 
 
 # =================================================
@@ -142,7 +222,6 @@ with tab2:
 
         df = pd.read_csv(file)
 
-        # Remove label column if present
         if "Class" in df.columns:
             df = df.drop("Class", axis=1)
 
@@ -150,16 +229,22 @@ with tab2:
 
         df["fraud_probability"] = probs
 
-        # -------------------------------------------------
-        # Risk Level Categorization
-        # -------------------------------------------------
-
         df["risk_level"] = df["fraud_probability"].apply(
             lambda x: "HIGH" if x > 0.8 else "MEDIUM" if x > 0.3 else "LOW"
         )
 
         st.subheader("Transaction Data Preview")
-        st.write(df.head())
+        st.dataframe(df.head(), use_container_width=True)
+
+        # -------------------------------------------------
+        # Fraud Statistics
+        # -------------------------------------------------
+
+        col1, col2, col3 = st.columns(3)
+
+        col1.metric("Total Transactions", len(df))
+        col2.metric("High Risk", len(df[df["risk_level"] == "HIGH"]))
+        col3.metric("Medium Risk", len(df[df["risk_level"] == "MEDIUM"]))
 
         # -------------------------------------------------
         # Fraud Probability Distribution
@@ -177,7 +262,7 @@ with tab2:
         st.plotly_chart(fig, use_container_width=True)
 
         # -------------------------------------------------
-        # Risk Level Summary Chart
+        # Risk Category Chart
         # -------------------------------------------------
 
         st.subheader("Fraud Risk Category Summary")
@@ -203,7 +288,7 @@ with tab2:
 
         high_risk = df[df["fraud_probability"] > 0.8]
 
-        st.write(high_risk.head())
+        st.dataframe(high_risk, use_container_width=True)
 
         st.metric(
             "Number of High Risk Transactions",
@@ -211,7 +296,7 @@ with tab2:
         )
 
         # -------------------------------------------------
-        # Top Suspicious Transactions
+        # Top Fraud Leaderboard
         # -------------------------------------------------
 
         st.subheader("Top Suspicious Transactions")
@@ -221,4 +306,26 @@ with tab2:
             ascending=False
         ).head(10)
 
-        st.write(top_fraud)
+        fig3 = px.bar(
+            top_fraud,
+            x=top_fraud.index,
+            y="fraud_probability",
+            title="Top 10 Suspicious Transactions"
+        )
+
+        st.plotly_chart(fig3, use_container_width=True)
+
+        st.dataframe(top_fraud, use_container_width=True)
+
+        # -------------------------------------------------
+        # Download flagged transactions
+        # -------------------------------------------------
+
+        csv = high_risk.to_csv(index=False)
+
+        st.download_button(
+            label="Download High Risk Transactions",
+            data=csv,
+            file_name="flagged_transactions.csv",
+            mime="text/csv"
+        )
